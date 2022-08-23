@@ -1,8 +1,6 @@
 PsPdfBundle
 ===========
 
-[![Build Status](https://secure.travis-ci.org/psliwa/PdfBundle.png?branch=master)](http://travis-ci.org/psliwa/PdfBundle)
-
 This bundle integrates Symfony2 with [PHPPdf][1] library. Thanks to this bundle you can easily generate PDF or image (png, jpg) files.
 
 Documentation of [PHPPdf][1] you can find on github (README file).
@@ -12,7 +10,7 @@ Installation
 
   1. Use composer. PsPdfBundle requires "minimum-stability" equals to dev. Run this command:
 
-        composer require psliwa/pdf-bundle
+        composer require littlerocket/pdf-bundle
 
   2. Register bundle in AppKernel:
 
@@ -118,5 +116,5 @@ Pdf annotation has four optional properties:
 * documentParserType - type of parser: xml or markdown
 * enableCache - pdf output should by cached? True or false, default: false. Hash (md5) from template and stylesheet content is a cache key, only PHPPdf invocation is cached, controller is always called.
 
-[1]: https://github.com/psliwa/PHPPdf
+[1]: https://github.com/littlerocket/PHPPdf
 [2]: https://github.com/avalanche123/Imagine

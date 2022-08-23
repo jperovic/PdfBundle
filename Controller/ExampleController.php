@@ -15,7 +15,7 @@ use Ps\PdfBundle\Annotation\Pdf;
 
 /**
  * Controller with examples
- * 
+ *
  * @author Piotr Śliwa <peter.pl7@gmail.com>
  */
 class ExampleController extends Controller
@@ -24,25 +24,25 @@ class ExampleController extends Controller
     {
         return $this->render('PsPdfBundle:Example:index.html.twig');
     }
-    
+
     public function usingFacadeDirectlyAction()
     {
         $facade = $this->get('ps_pdf.facade');
         $response = new Response();
         $this->render('PsPdfBundle:Example:usingFacadeDirectly.pdf.twig', array(), $response);
-        
+
         $xml = $response->getContent();
-        
+
         $content = $facade->render($xml);
-        
+
         return new Response($content, 200, array('content-type' => 'application/pdf'));
     }
 
     /**
      * Possible custom headers and external stylesheet file
-     * 
+     *
      * @Pdf(
-     * 	headers={"Expires"="Sat, 1 Jan 2000 12:00:00 GMT"}, 
+     * 	headers={"Expires"="Sat, 1 Jan 2000 12:00:00 GMT"},
      * 	stylesheet="PsPdfBundle:Example:pdfStylesheet.xml.twig",
      *  enableCache=true
      * )
@@ -50,20 +50,20 @@ class ExampleController extends Controller
     public function usingAutomaticFormatGuessingAction($name)
     {
         $format = $this->get('request')->get('_format');
-        
+
         return $this->render(sprintf('PsPdfBundle:Example:usingAutomaticFormatGuessing.%s.twig', $format), array(
             'name' => $name,
         ));
     }
-    
+
     /**
      * Standard examples of PHPPdf library
      */
     public function examplesAction()
     {
         $kernelRootDir = $this->container->getParameter('kernel.root_dir');
-        
-        $propablyPhpPdfExamplesFilePaths = array($kernelRootDir.'/../vendor/PHPPdf/examples/index.php', $kernelRootDir.'/../vendor/psliwa/php-pdf/examples/index.php');
+
+        $propablyPhpPdfExamplesFilePaths = array($kernelRootDir.'/../vendor/PHPPdf/examples/index.php', $kernelRootDir.'/../vendor/littlerocket/php-pdf/examples/index.php');
 
         foreach($propablyPhpPdfExamplesFilePaths as $propablyPhpPdfExamplesFilePath)
         {
@@ -76,7 +76,7 @@ class ExampleController extends Controller
 
         throw new NotFoundHttpException('File with PHPPdf examples not found.');
     }
-    
+
     /**
      * @Pdf(
      * 	headers={"Expires"="Sat, 1 Jan 2000 12:00:00 GMT"},
@@ -86,7 +86,7 @@ class ExampleController extends Controller
     public function markdownAction()
     {
         $format = $this->get('request')->get('_format');
-        
+
         return $this->render(sprintf('PsPdfBundle:Example:markdown.%s.twig', $format));
     }
 }
