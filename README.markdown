@@ -116,5 +116,5 @@ Pdf annotation has four optional properties:
 * documentParserType - type of parser: xml or markdown
 * enableCache - pdf output should by cached? True or false, default: false. Hash (md5) from template and stylesheet content is a cache key, only PHPPdf invocation is cached, controller is always called.
 
-[1]: https://github.com/littlerocket/PHPPdf
+[1]: https://github.com/littlerocketdev/PHPPdf
 [2]: https://github.com/avalanche123/Imagine
