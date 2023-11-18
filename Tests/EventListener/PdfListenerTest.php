@@ -1,16 +1,26 @@
 <?php
 
-namespace Ps\PdfBundle\Test\EventListener;
+namespace Ps\PdfBundle\Tests\EventListener;
 
 use PHPPdf\Parser\Exception\ParseException;
 
 use Symfony\Component\HttpFoundation\Response;
+use Symfony\Component\HttpKernel\Event\ControllerEvent;
 use Symfony\Component\HttpKernel\Event\FilterResponseEvent;
 use Symfony\Component\HttpKernel\Event\GetResponseForControllerResultEvent;
 use Symfony\Component\HttpKernel\Event\FilterControllerEvent;
 use Ps\PdfBundle\Annotation\Pdf;
 use Symfony\Component\Config\FileLocator;
 use Ps\PdfBundle\EventListener\PdfListener;
+use Symfony\Component\HttpKernel\Event\ResponseEvent;
+use Symfony\Component\HttpKernel\HttpKernelInterface;
+use Twig\Environment;
+use Symfony\Component\HttpFoundation\Request;
+use PHPPdf\Cache\Cache;
+use Doctrine\Common\Annotations\Reader;
+use Ps\PdfBundle\Reflection\Factory;
+use PHPPdf\Core\Facade;
+use PHPPdf\Core\FacadeBuilder;
 
 class PdfListenerTest extends \PHPUnit_Framework_TestCase
 {
@@ -24,35 +34,43 @@ class PdfListenerTest extends \PHPUnit_Framework_TestCase
     private $reflactionFactory;
     private $templatingEngine;
     private $cache;
-    
+    private $kernel;
+
     public function setUp()
     {
-        $this->pdfFacadeBuilder = $this->getMockBuilder('PHPPdf\Core\FacadeBuilder')
+        $this->pdfFacadeBuilder = $this->getMockBuilder(FacadeBuilder::class)
                                        ->disableOriginalConstructor()
                                        ->setMethods(array('build', 'setDocumentParserType'))
                                        ->getMock();
         
-        $this->pdfFacade = $this->getMockBuilder('PHPPdf\Core\Facade')
+        $this->pdfFacade = $this->getMockBuilder(Facade::class)
                                 ->disableOriginalConstructor()
                                 ->setMethods(array('render'))
                                 ->getMock();
-                                
-        $this->templatingEngine = $this->getMockBuilder('Symfony\Component\Templating\EngineInterface')
+
+        $this->templatingEngine = $this->getMockBuilder(Environment::class)
+                                       ->disableOriginalConstructor()
                                        ->setMethods(array('render', 'supports', 'exists'))
                                        ->getMock();
         
-        $this->reflactionFactory = $this->getMockBuilder('Ps\PdfBundle\Reflection\Factory')
+        $this->reflactionFactory = $this->getMockBuilder(Factory::class)
                                         ->setMethods(array('createMethod'))
                                         ->getMock();
-        $this->annotationReader = $this->getMockBuilder('Doctrine\Common\Annotations\Reader')
+        $this->annotationReader = $this->getMockBuilder(Reader::class)
                                        ->setMethods(array('getMethodAnnotations', 'getMethodAnnotation', 'getClassAnnotations', 'getClassAnnotation', 'getPropertyAnnotations', 'getPropertyAnnotation'))
                                        ->getMock();
                                        
-        $this->cache = $this->getMockBuilder('PHPPdf\Cache\Cache')->getMock();
+        $this->cache = $this->getMockBuilder(Cache::class)->getMock();
 
-        $this->listener = new PdfListener($this->pdfFacadeBuilder, $this->annotationReader, $this->reflactionFactory, $this->templatingEngine, $this->cache);
+        $this->listener = new PdfListener(
+            $this->pdfFacadeBuilder,
+            $this->annotationReader,
+            $this->reflactionFactory,
+            $this->templatingEngine,
+            $this->cache
+        );
         
-        $this->request = $this->getMockBuilder('Symfony\Component\HttpFoundation\Request')
+        $this->request = $this->getMockBuilder(Request::class)
                               ->setMethods(array('get'))
                               ->getMock();
         $this->requestAttributes = $this->getMockBuilder('stdClass')
@@ -61,7 +79,7 @@ class PdfListenerTest extends \PHPUnit_Framework_TestCase
                                         
         $this->request->attributes = $this->requestAttributes;
         
-        $this->controllerEvent = $this->getMockBuilder('Symfony\Component\HttpKernel\Event\FilterControllerEvent')
+        $this->controllerEvent = $this->getMockBuilder(ControllerEvent::class)
                             ->setMethods(array('setController', 'getController', 'getRequest'))
                             ->disableOriginalConstructor()
                             ->getMock();
@@ -69,6 +87,8 @@ class PdfListenerTest extends \PHPUnit_Framework_TestCase
         $this->controllerEvent->expects($this->any())
                     ->method('getRequest')
                     ->will($this->returnValue($this->request));
+
+        $this->kernel = $this->createMock(HttpKernelInterface::class);
     }
     
     /**
@@ -90,7 +110,7 @@ class PdfListenerTest extends \PHPUnit_Framework_TestCase
                     ->method('getController')
                     ->will($this->returnValue($controllerStub));
         
-        if($format == 'pdf')
+        if($format === 'pdf')
         {
             $this->reflactionFactory->expects($this->once())
                                     ->method('createMethod')
@@ -99,7 +119,7 @@ class PdfListenerTest extends \PHPUnit_Framework_TestCase
             
             $this->annotationReader->expects($this->once())
                                    ->method('getMethodAnnotation')
-                                   ->with($methodStub, 'Ps\PdfBundle\Annotation\Pdf')
+                                   ->with($methodStub, Pdf::class)
                                    ->will($this->returnValue($annotation));
         }
         else
@@ -147,10 +167,10 @@ class PdfListenerTest extends \PHPUnit_Framework_TestCase
                                 ->method('get')
                                 ->with('_pdf')
                                 ->will($this->returnValue($annotation));
-        
+
         $responseStub = new Response();
         $responseStub->setStatusCode(300);        
-        $event = new FilterResponseEventStub($this->request, $responseStub);
+        $event = new FilterResponseEventStub($this->kernel, $this->request, $responseStub);
                         
         $this->pdfFacadeBuilder->expects($this->never())
                                ->method('build');
@@ -222,7 +242,7 @@ class PdfListenerTest extends \PHPUnit_Framework_TestCase
                             ->will($this->returnValue($contentStub));
         }
         
-        $event = new FilterResponseEventStub($this->request, $responseStub);
+        $event = new FilterResponseEventStub($this->kernel, $this->request, $responseStub);
                         
         $this->listener->onKernelResponse($event);
         
@@ -271,7 +291,7 @@ class PdfListenerTest extends \PHPUnit_Framework_TestCase
                         ->will($this->throwException($exception));
 
         $responseStub = new Response();
-        $event = new FilterResponseEventStub($this->request, $responseStub);
+        $event = new FilterResponseEventStub($this->kernel, $this->request, $responseStub);
                         
         try
         {
@@ -316,8 +336,8 @@ class PdfListenerTest extends \PHPUnit_Framework_TestCase
         $this->pdfFacade->expects($this->once())
                         ->method('render')
                         ->with($this->anything(), $stylesheetContent);
-        
-        $event = new FilterResponseEventStub($this->request, new Response());                        
+
+        $event = new FilterResponseEventStub($this->kernel, $this->request, new Response());
         $this->listener->onKernelResponse($event);
     }
     
@@ -342,13 +362,15 @@ class PdfListenerTest extends \PHPUnit_Framework_TestCase
     }
 }
 
-class FilterResponseEventStub extends FilterResponseEvent
+class FilterResponseEventStub extends ResponseEvent
 {
     private $request;
     private $response;
     
-    public function __construct($request, $response)
+    public function __construct(HttpKernelInterface $kernel, Request $request, Response $response)
     {
+        parent::__construct($kernel, $request, HttpKernelInterface::MASTER_REQUEST, $response);
+
         $this->request = $request;
         $this->response = $response;
     }

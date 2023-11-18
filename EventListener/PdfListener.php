@@ -8,19 +8,20 @@
 
 namespace Ps\PdfBundle\EventListener;
 
-use PHPPdf\Cache\Cache;
-use Ps\PdfBundle\Annotation\Pdf as PdfAnnotation;
-use Symfony\Component\HttpFoundation\Request;
-use PHPPdf\Core\Facade;
-use Symfony\Component\HttpKernel\Exception\HttpException;
-use PHPPdf\Core\FacadeBuilder;
-use Symfony\Component\Templating\EngineInterface;
-use Symfony\Component\HttpKernel\Event\GetResponseEvent;
-use Symfony\Component\HttpKernel\Event\FilterResponseEvent;
-use Symfony\Component\HttpFoundation\Response;
-use Symfony\Component\HttpKernel\Event\FilterControllerEvent;
-use Ps\PdfBundle\Reflection\Factory;
 use Doctrine\Common\Annotations\Reader;
+use Exception;
+use PHPPdf\Cache\Cache;
+use PHPPdf\Core\FacadeBuilder;
+use Ps\PdfBundle\Annotation\Pdf as PdfAnnotation;
+use Ps\PdfBundle\Reflection\Factory;
+use Symfony\Component\HttpFoundation\Request;
+use Symfony\Component\HttpFoundation\Response;
+use Symfony\Component\HttpKernel\Event\ControllerEvent;
+use Symfony\Component\HttpKernel\Event\ResponseEvent;
+use Twig\Environment;
+use Twig\Error\LoaderError;
+use Twig\Error\RuntimeError;
+use Twig\Error\SyntaxError;
 
 /**
  * This listener will replace reponse content by pdf document's content if Pdf annotations is found.
@@ -33,39 +34,50 @@ class PdfListener
     private $pdfFacadeBuilder;
     private $annotationReader;
     private $reflectionFactory;
-    private $templatingEngine;
+    private $environment;
     private $cache;
     
-    public function __construct(FacadeBuilder $pdfFacadeBuilder, Reader $annotationReader, Factory $reflectionFactory, EngineInterface $templatingEngine, Cache $cache)
-    {
+    public function __construct(
+        FacadeBuilder $pdfFacadeBuilder,
+        Reader $annotationReader,
+        Factory $reflectionFactory,
+        Environment $environment,
+        Cache $cache
+    ) {
         $this->pdfFacadeBuilder = $pdfFacadeBuilder;
         $this->annotationReader = $annotationReader;
         $this->reflectionFactory = $reflectionFactory;
-        $this->templatingEngine = $templatingEngine;
+        $this->environment = $environment;
         $this->cache = $cache;
     }
     
-    public function onKernelController(FilterControllerEvent $event)
+    public function onKernelController(ControllerEvent $event): void
     {
         $request = $event->getRequest();        
         $format = $request->get('_format');
         
-        if($format != 'pdf' || !is_array($controller = $event->getController()) || !$controller)
+        if($format !== 'pdf' || !is_array($controller = $event->getController()) || !$controller)
         {
             return;
         }
         
         $method = $this->reflectionFactory->createMethod($controller[0], $controller[1]);
         
-        $annotation = $this->annotationReader->getMethodAnnotation($method, 'Ps\PdfBundle\Annotation\Pdf');
+        $annotation = $this->annotationReader->getMethodAnnotation($method, PdfAnnotation::class);
         
         if($annotation)
         {
             $request->attributes->set('_pdf', $annotation);
         }                
     }
-    
-    public function onKernelResponse(FilterResponseEvent $event)
+
+    /**
+     * @throws RuntimeError
+     * @throws SyntaxError
+     * @throws LoaderError
+     * @throws Exception
+     */
+    public function onKernelResponse(ResponseEvent $event): void
     {
         $request = $event->getRequest();
         
@@ -84,7 +96,7 @@ class PdfListener
         $stylesheetContent = null;
         if($stylesheet = $annotation->stylesheet)
         {
-            $stylesheetContent = $this->templatingEngine->render($stylesheet);
+            $stylesheetContent = $this->environment->render($stylesheet);
         }
         
         $content = $this->getPdfContent($annotation, $response, $request, $stylesheetContent);                       
@@ -98,7 +110,10 @@ class PdfListener
 
         $response->setContent($content);
     }
-    
+
+    /**
+     * @throws Exception
+     */
     private function getPdfContent(PdfAnnotation $pdfAnnotation, Response $response, Request $request, $stylesheetContent)
     {
         try
@@ -126,13 +141,14 @@ class PdfListener
              
                 if($pdfAnnotation->enableCache)
                 {
+                    /** @noinspection PhpUndefinedVariableInspection */
                     $this->cache->save($pdfContent, $cacheKey);
                 }
             }
             
             return $pdfContent;
         }
-        catch(\Exception $e)
+        catch(Exception $e)
         {
             $request->setRequestFormat('html');
             $response->headers->set('content-type', 'text/html');
