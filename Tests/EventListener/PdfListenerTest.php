@@ -2,27 +2,26 @@
 
 namespace Ps\PdfBundle\Tests\EventListener;
 
+use Doctrine\Common\Annotations\Reader;
+use PHPPdf\Cache\Cache;
+use PHPPdf\Core\Facade;
+use PHPPdf\Core\FacadeBuilder;
 use PHPPdf\Parser\Exception\ParseException;
-
+use PHPUnit_Framework_TestCase;
+use Ps\PdfBundle\Annotation\Pdf;
+use Ps\PdfBundle\EventListener\PdfListener;
+use Ps\PdfBundle\Reflection\Factory;
+use ReflectionException;
+use ReflectionMethod;
+use Symfony\Component\Config\FileLocator;
+use Symfony\Component\HttpFoundation\Request;
 use Symfony\Component\HttpFoundation\Response;
 use Symfony\Component\HttpKernel\Event\ControllerEvent;
-use Symfony\Component\HttpKernel\Event\FilterResponseEvent;
-use Symfony\Component\HttpKernel\Event\GetResponseForControllerResultEvent;
-use Symfony\Component\HttpKernel\Event\FilterControllerEvent;
-use Ps\PdfBundle\Annotation\Pdf;
-use Symfony\Component\Config\FileLocator;
-use Ps\PdfBundle\EventListener\PdfListener;
 use Symfony\Component\HttpKernel\Event\ResponseEvent;
 use Symfony\Component\HttpKernel\HttpKernelInterface;
 use Twig\Environment;
-use Symfony\Component\HttpFoundation\Request;
-use PHPPdf\Cache\Cache;
-use Doctrine\Common\Annotations\Reader;
-use Ps\PdfBundle\Reflection\Factory;
-use PHPPdf\Core\Facade;
-use PHPPdf\Core\FacadeBuilder;
 
-class PdfListenerTest extends \PHPUnit_Framework_TestCase
+class PdfListenerTest extends PHPUnit_Framework_TestCase
 {
     private $pdfFacadeBuilder;
     private $pdfFacade;
@@ -36,7 +35,7 @@ class PdfListenerTest extends \PHPUnit_Framework_TestCase
     private $cache;
     private $kernel;
 
-    public function setUp()
+    public function setUp():void
     {
         $this->pdfFacadeBuilder = $this->getMockBuilder(FacadeBuilder::class)
                                        ->disableOriginalConstructor()
@@ -78,49 +77,52 @@ class PdfListenerTest extends \PHPUnit_Framework_TestCase
                                         ->getMock();
                                         
         $this->request->attributes = $this->requestAttributes;
-        
+
+        /** @noinspection ClassMockingCorrectnessInspection */
+        /** @noinspection PhpUnitInvalidMockingEntityInspection */
         $this->controllerEvent = $this->getMockBuilder(ControllerEvent::class)
-                            ->setMethods(array('setController', 'getController', 'getRequest'))
-                            ->disableOriginalConstructor()
-                            ->getMock();
+                                      ->setMethods(array('setController', 'getController', 'getRequest'))
+                                      ->disableOriginalConstructor()
+                                      ->getMock();
                             
-        $this->controllerEvent->expects($this->any())
+        $this->controllerEvent
                     ->method('getRequest')
-                    ->will($this->returnValue($this->request));
+                    ->willReturn($this->request);
 
         $this->kernel = $this->createMock(HttpKernelInterface::class);
     }
-    
+
     /**
      * @test
      * @dataProvider annotationProvider
+     * @throws ReflectionException
      */
-    public function setAnnotationObjectToRequestIfRequestFormatIsPdfAndAnnotationExists($annotation, $format, $shouldControllerBeenSet)
+    public function setAnnotationObjectToRequestIfRequestFormatIsPdfAndAnnotationExists($annotation, $format, $shouldControllerBeenSet): void
     {
         $objectStub = new FileLocator();
         $controllerStub = array($objectStub, 'locate');
-        $methodStub = new \ReflectionMethod($controllerStub[0], $controllerStub[1]);
+        $methodStub = new ReflectionMethod($controllerStub[0], $controllerStub[1]);
 
         $this->request->expects($this->once())
                       ->method('get')
                       ->with('_format')
-                      ->will($this->returnValue($format));
+                      ->willReturn($format);
         
-        $this->controllerEvent->expects($this->any())
+        $this->controllerEvent
                     ->method('getController')
-                    ->will($this->returnValue($controllerStub));
+                    ->willReturn($controllerStub);
         
         if($format === 'pdf')
         {
             $this->reflactionFactory->expects($this->once())
                                     ->method('createMethod')
                                     ->with($controllerStub[0], $controllerStub[1])
-                                    ->will($this->returnValue($methodStub));
+                                    ->willReturn($methodStub);
             
             $this->annotationReader->expects($this->once())
                                    ->method('getMethodAnnotation')
                                    ->with($methodStub, Pdf::class)
-                                   ->will($this->returnValue($annotation));
+                                   ->willReturn($annotation);
         }
         else
         {
@@ -146,7 +148,7 @@ class PdfListenerTest extends \PHPUnit_Framework_TestCase
         $this->listener->onKernelController($this->controllerEvent);
     }
     
-    public function annotationProvider()
+    public function annotationProvider(): array
     {
         $annotation = new Pdf(array());
         
@@ -160,21 +162,21 @@ class PdfListenerTest extends \PHPUnit_Framework_TestCase
     /**
      * @test
      */
-    public function donotInvokePdfRenderingOnViewEventWhenResponseStatusIsError()
+    public function donotInvokePdfRenderingOnViewEventWhenResponseStatusIsError(): void
     {
         $annotation = new Pdf(array());
         $this->requestAttributes->expects($this->once())
                                 ->method('get')
                                 ->with('_pdf')
-                                ->will($this->returnValue($annotation));
+                                ->willReturn($annotation);
 
         $responseStub = new Response();
-        $responseStub->setStatusCode(300);        
-        $event = new FilterResponseEventStub($this->kernel, $this->request, $responseStub);
+        $responseStub->setStatusCode(300);
+        $event = new ResponseEvent($this->kernel, $this->request, HttpKernelInterface::MAIN_REQUEST, $responseStub);
                         
         $this->pdfFacadeBuilder->expects($this->never())
                                ->method('build');
-        
+
         $this->listener->onKernelResponse($event);
     }
     
@@ -182,13 +184,13 @@ class PdfListenerTest extends \PHPUnit_Framework_TestCase
      * @test
      * @dataProvider booleanPairProvider
      */
-    public function invokePdfRenderingOnViewEvent($enableCache, $freshCache)
+    public function invokePdfRenderingOnViewEvent($enableCache, $freshCache): void
     {
         $annotation = new Pdf(array('enableCache' => $enableCache));
         $this->requestAttributes->expects($this->once())
                                 ->method('get')
                                 ->with('_pdf')
-                                ->will($this->returnValue($annotation));
+                                ->willReturn($annotation);
                                 
         $contentStub = 'stub';
         $responseContent = 'controller result stub';
@@ -200,14 +202,14 @@ class PdfListenerTest extends \PHPUnit_Framework_TestCase
             $this->cache->expects($this->once())
                         ->method('test')
                         ->with($cacheKey)
-                        ->will($this->returnValue($freshCache));
+                        ->willReturn($freshCache);
             
             if($freshCache)
             {
                 $this->cache->expects($this->once())
                             ->method('load')
                             ->with($cacheKey)
-                            ->will($this->returnValue($contentStub));
+                            ->willReturn($contentStub);
             }
             else
             {
@@ -219,7 +221,7 @@ class PdfListenerTest extends \PHPUnit_Framework_TestCase
                 $this->pdfFacade->expects($this->once())
                                 ->method('render')
                                 ->with($responseContent)
-                                ->will($this->returnValue($contentStub));
+                                ->willReturn($contentStub);
                                 
                 $this->cache->expects($this->once())
                             ->method('save')
@@ -239,10 +241,10 @@ class PdfListenerTest extends \PHPUnit_Framework_TestCase
             $this->pdfFacade->expects($this->once())
                             ->method('render')
                             ->with($responseContent)
-                            ->will($this->returnValue($contentStub));
+                            ->willReturn($contentStub);
         }
         
-        $event = new FilterResponseEventStub($this->kernel, $this->request, $responseStub);
+        $event = new ResponseEvent($this->kernel, $this->request, HttpKernelInterface::MAIN_REQUEST, $responseStub);
                         
         $this->listener->onKernelResponse($event);
         
@@ -251,7 +253,7 @@ class PdfListenerTest extends \PHPUnit_Framework_TestCase
         $this->assertEquals($contentStub, $response->getContent());
     }
     
-    public function booleanPairProvider()
+    public function booleanPairProvider(): array
     {
         return array(
             array(false, false),
@@ -260,27 +262,27 @@ class PdfListenerTest extends \PHPUnit_Framework_TestCase
         );
     }
     
-    private function expectPdfFacadeBuilding(Pdf $annotation)
+    private function expectPdfFacadeBuilding(Pdf $annotation): void
     {
         $this->pdfFacadeBuilder->expects($this->once())
                                ->method('setDocumentParserType')
                                ->with($annotation->documentParserType)
-                               ->will($this->returnValue($this->pdfFacadeBuilder));
+                               ->willReturn($this->pdfFacadeBuilder);
         $this->pdfFacadeBuilder->expects($this->once())
                                ->method('build')
-                               ->will($this->returnValue($this->pdfFacade));        
+                               ->willReturn($this->pdfFacade);
     }
     
     /**
      * @test
      */
-    public function setResponseContentTypeAndRequestFormatOnException()
+    public function setResponseContentTypeAndRequestFormatOnException(): void
     {
         $annotation = new Pdf(array('enableCache' => false));
         $this->requestAttributes->expects($this->once())
                                 ->method('get')
                                 ->with('_pdf')
-                                ->will($this->returnValue($annotation));
+                                ->willReturn($annotation);
         
         $this->expectPdfFacadeBuilding($annotation);
 
@@ -291,7 +293,7 @@ class PdfListenerTest extends \PHPUnit_Framework_TestCase
                         ->will($this->throwException($exception));
 
         $responseStub = new Response();
-        $event = new FilterResponseEventStub($this->kernel, $this->request, $responseStub);
+        $event = new ResponseEvent($this->kernel, $this->request, HttpKernelInterface::MAIN_REQUEST, $responseStub);
                         
         try
         {
@@ -308,7 +310,7 @@ class PdfListenerTest extends \PHPUnit_Framework_TestCase
     /**
      * @test
      */
-    public function useStylesheetFromAnnotation()
+    public function useStylesheetFromAnnotation(): void
     {
         $stylesheetPath = 'some path';
         
@@ -316,44 +318,44 @@ class PdfListenerTest extends \PHPUnit_Framework_TestCase
         $this->requestAttributes->expects($this->once())
                                 ->method('get')
                                 ->with('_pdf')
-                                ->will($this->returnValue($annotation));
+                                ->willReturn($annotation);
                                 
         $stylesheetContent = 'stylesheet content';
         
         $this->templatingEngine->expects($this->once())
                                ->method('render')
                                ->with($stylesheetPath)
-                               ->will($this->returnValue($stylesheetContent));
+                               ->willReturn($stylesheetContent);
         
         $this->pdfFacadeBuilder->expects($this->once())
                                ->method('setDocumentParserType')
                                ->with($annotation->documentParserType)
-                               ->will($this->returnValue($this->pdfFacadeBuilder));
+                               ->willReturn($this->pdfFacadeBuilder);
         $this->pdfFacadeBuilder->expects($this->once())
                                ->method('build')
-                               ->will($this->returnValue($this->pdfFacade));  
+                               ->willReturn($this->pdfFacade);
                                
         $this->pdfFacade->expects($this->once())
                         ->method('render')
                         ->with($this->anything(), $stylesheetContent);
 
-        $event = new FilterResponseEventStub($this->kernel, $this->request, new Response());
+        $event = new ResponseEvent($this->kernel, $this->request, HttpKernelInterface::MAIN_REQUEST, new Response());
         $this->listener->onKernelResponse($event);
     }
     
     /**
      * @test
      */
-    public function breakInvocationIfControllerIsEmpty()
+    public function breakInvocationIfControllerIsEmpty(): void
     {
         $this->request->expects($this->once())
                       ->method('get')
                       ->with('_format')
-                      ->will($this->returnValue('pdf'));
+                      ->willReturn('pdf');
         
         $this->controllerEvent->expects($this->once())
                     ->method('getController')
-                    ->will($this->returnValue(array()));
+                    ->willReturn(function(){});
                     
         $this->reflactionFactory->expects($this->never())
                                 ->method('createMethod');
@@ -362,31 +364,31 @@ class PdfListenerTest extends \PHPUnit_Framework_TestCase
     }
 }
 
-class FilterResponseEventStub extends ResponseEvent
-{
-    private $request;
-    private $response;
-    
-    public function __construct(HttpKernelInterface $kernel, Request $request, Response $response)
-    {
-        parent::__construct($kernel, $request, HttpKernelInterface::MASTER_REQUEST, $response);
-
-        $this->request = $request;
-        $this->response = $response;
-    }
-    
-    public function getResponse()
-    {
-        return $this->response;
-    }
-    
-    public function setResponse(Response $response)
-    {
-        $this->response = $response;
-    }
-
-	public function getRequest()
-    {
-        return $this->request;
-    }
-}
+    //class FilterResponseEventStub extends ResponseEvent
+    //{
+    //    private $request;
+    //    private $response;
+    //
+    //    public function __construct(HttpKernelInterface $kernel, Request $request, Response $response)
+    //    {
+    //        parent::__construct($kernel, $request, HttpKernelInterface::MASTER_REQUEST, $response);
+    //
+    //        $this->request = $request;
+    //        $this->response = $response;
+    //    }
+    //
+    //    public function getResponse()
+    //    {
+    //        return $this->response;
+    //    }
+    //
+    //    public function setResponse(Response $response)
+    //    {
+    //        $this->response = $response;
+    //    }
+    //
+    //	public function getRequest()
+    //    {
+    //        return $this->request;
+    //    }
+    //}

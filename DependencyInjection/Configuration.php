@@ -20,10 +20,10 @@ class Configuration implements ConfigurationInterface
 {
 	public function getConfigTreeBuilder()
     {
-        $treeBuilder = new TreeBuilder();
-        $rootNode = $treeBuilder->root('ps_pdf');
-        
-        $rootNode->children()
+        $treeBuilder = new TreeBuilder('ps_pdf');
+
+        $treeBuilder->getRootNode()
+                    ->children()
                     ->arrayNode('cache')
                       ->children()
                         ->variableNode('options')
